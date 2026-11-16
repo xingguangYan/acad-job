@@ -1,0 +1,8 @@
+interface:
+  display_name: "Academic Job Match"
+  short_description: "Academic job matcher builder for ModelScope Studio"
+  default_prompt: "Use $acad-job to scaffold the Phase 1 AcademicJobsOnline academic job matcher and run parse_academic_cv / search_academic_jobs."
+policy:
+  allow_implicit_invocation: true
+
+
