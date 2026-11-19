@@ -1,10 +1,22 @@
-
-
 # acad-job · 科研前沿 × 产业化 × 学术求职与基金聚合器
+
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
+[![Python](https://img.shields.io/badge/Python-3.x-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-App-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
+[![GitHub stars](https://img.shields.io/github/stars/xingguangYan/acad-job?style=social)](https://github.com/xingguangYan/acad-job)
+[![GitHub last commit](https://img.shields.io/github/last-commit/xingguangYan/acad-job)](https://github.com/xingguangYan/acad-job/commits/main)
+[![GitHub issues](https://img.shields.io/github/issues/xingguangYan/acad-job)](https://github.com/xingguangYan/acad-job/issues)
+[![README](https://img.shields.io/badge/README-View-blue)](https://github.com/xingguangYan/acad-job/blob/main/README.md)
+
+> 🔗 **直接访问项目主页：** [github.com/xingguangYan/acad-job](https://github.com/xingguangYan/acad-job)  
+> 📖 **在线阅读 README：** [README.md](https://github.com/xingguangYan/acad-job/blob/main/README.md)  
+> ✏️ **维护者编辑入口（需登录且具备写权限）：** [Edit README](https://github.com/xingguangYan/acad-job/edit/main/README.md)
+
+**标签 / Topics：** `academic-jobs` · `research-tools` · `streamlit` · `openalex` · `semantic-scholar` · `arxiv` · `patentsview` · `cv-matching` · `research-grants` · `ai-for-science` · `commercialization`
 
 **一个 Streamlit 单文件应用**：把「学术文献检索 → 产业化信号（arXiv 趋势 / 专利 / TRL）→ 学术岗位聚合与 CV 匹配 → 青年科研基金追踪」串成一条主线，帮助科研求职者、青年 PI 和产业化分析师在同一个界面里完成「看方向、看机会、看钱」。
 
-![应用界面](assets/app_screenshot.png)
+![应用界面](<img width="2560" height="1271" alt="image" src="https://github.com/user-attachments/assets/2ddb59fc-87cd-445a-9cc0-b2b5108fa1c3" />)
 
 ## 功能一览
 
@@ -93,6 +105,10 @@ streamlit run app.py
 ## 贡献与支持
 
 作者：xingguangYan（xingguangyan0703@gmail.com）。如本项目对你有帮助，欢迎在「☕ 支持与合作」标签页扫码支持。
+
+- 项目主页：[https://github.com/xingguangYan/acad-job](https://github.com/xingguangYan/acad-job)
+- 在线阅读 README：[https://github.com/xingguangYan/acad-job/blob/main/README.md](https://github.com/xingguangYan/acad-job/blob/main/README.md)
+- 维护者编辑入口（需登录且具备写权限）：[https://github.com/xingguangYan/acad-job/edit/main/README.md](https://github.com/xingguangYan/acad-job/edit/main/README.md)
 
 ## 版本历史
 
