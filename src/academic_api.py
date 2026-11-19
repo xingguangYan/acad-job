@@ -12,6 +12,14 @@ import requests
 
 from src.config import AppConfig, DOMAIN_OPTIONS, USER_AGENT
 
+TIME_RANGE_YEARS: dict[str, int | None] = {
+    "全部时间": None,
+    "今年最新 (2026)": 0,
+    "近 1 年": 1,
+    "近 3 年": 3,
+    "近 5 年": 5,
+}
+
 
 def normalize_doi(doi: str | None) -> str:
     if not doi:
@@ -65,19 +73,33 @@ def _detect_preprint_status(
 
 
 def fetch_openalex_works(
-    query: str, domain: str, config: AppConfig, limit: int = 25
+    query: str,
+    domain: str,
+    config: AppConfig,
+    limit: int = 25,
+    time_range: str = "全部时间",
 ) -> list[dict[str, Any]]:
     params: dict[str, Any] = {
         "search": query,
         "per-page": limit,
         "select": (
             "id,doi,title,publication_year,publication_date,type,cited_by_count,"
-            "authorships,primary_location,open_access,abstract_inverted_index,ids"
+            "authorships,primary_location,open_access,abstract_inverted_index,ids,"
+            "referenced_works,related_works"
         ),
     }
+
+    filters: list[str] = []
     concept_id = DOMAIN_OPTIONS.get(domain, {}).get("openalex_concept")
     if concept_id:
-        params["filter"] = f"concepts.id:{concept_id}"
+        filters.append(f"concepts.id:{concept_id}")
+    years_back = TIME_RANGE_YEARS.get(time_range)
+    if years_back is not None:
+        start_year = datetime.now(timezone.utc).year - years_back
+        filters.append(f"publication_year:>={start_year}")
+    if filters:
+        params["filter"] = ",".join(filters)
+
     if config.openalex_api_key:
         params["api_key"] = config.openalex_api_key
 
@@ -147,13 +169,19 @@ def fetch_openalex_works(
                 "source_badge": badge,
                 "providers": ["OpenAlex"],
                 "openalex_id": item.get("id") or ids.get("openalex"),
+                "related_works": [w.split("/")[-1] for w in (item.get("related_works") or [])[:8]],
+                "referenced_works": [w.split("/")[-1] for w in (item.get("referenced_works") or [])[:8]],
             }
         )
     return papers
 
 
 def fetch_semantic_scholar_works(
-    query: str, domain: str, config: AppConfig, limit: int = 25
+    query: str,
+    domain: str,
+    config: AppConfig,
+    limit: int = 25,
+    time_range: str = "全部时间",
 ) -> list[dict[str, Any]]:
     headers = {"User-Agent": USER_AGENT}
     if config.semantic_scholar_api_key:
@@ -170,6 +198,11 @@ def fetch_semantic_scholar_works(
     s2_field = DOMAIN_OPTIONS.get(domain, {}).get("s2_fields")
     if s2_field:
         params["fieldsOfStudy"] = s2_field
+
+    years_back = TIME_RANGE_YEARS.get(time_range)
+    if years_back is not None:
+        cur_y = datetime.now(timezone.utc).year
+        params["year"] = f"{cur_y - years_back}-{cur_y}"
 
     resp = requests.get(
         "https://api.semanticscholar.org/graph/v1/paper/search",
@@ -225,6 +258,8 @@ def fetch_semantic_scholar_works(
                 "source_badge": badge,
                 "providers": ["Semantic Scholar"],
                 "openalex_id": None,
+                "related_works": [],
+                "referenced_works": [],
             }
         )
     return papers
@@ -280,7 +315,10 @@ def _enrich_via_s2_batch(papers: list[dict[str, Any]], config: AppConfig) -> Non
 
 
 def search_academic_papers(
-    query: str, domain: str, config: AppConfig
+    query: str,
+    domain: str,
+    config: AppConfig,
+    time_range: str = "全部时间",
 ) -> tuple[list[dict[str, Any]], list[str]]:
     warnings: list[str] = []
     oa_results: list[dict[str, Any]] = []
@@ -288,8 +326,8 @@ def search_academic_papers(
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         futures = {
-            pool.submit(fetch_openalex_works, query, domain, config, 25): "OpenAlex",
-            pool.submit(fetch_semantic_scholar_works, query, domain, config, 25): "Semantic Scholar",
+            pool.submit(fetch_openalex_works, query, domain, config, 25, time_range): "OpenAlex",
+            pool.submit(fetch_semantic_scholar_works, query, domain, config, 25, time_range): "Semantic Scholar",
         }
         for fut in as_completed(futures):
             src = futures[fut]
@@ -302,7 +340,9 @@ def search_academic_papers(
             except requests.HTTPError as exc:
                 code = exc.response.status_code if exc.response is not None else ""
                 if src == "Semantic Scholar" and code == 429:
-                    warnings.append("Semantic Scholar 公共接口当前限流（429），已自动保留 OpenAlex 结果；可在左侧栏填入 S2 API Key 解除限流。")
+                    warnings.append(
+                        "Semantic Scholar 公共接口当前限流（429），已自动保留 OpenAlex 结果；可在左侧栏填入 S2 API Key 解除限流。"
+                    )
                 else:
                     warnings.append(f"部分数据源暂不可用：{src} 检索异常（HTTP {code}）")
             except Exception as exc:
@@ -342,6 +382,12 @@ def search_academic_papers(
                 existing["institutions"] = paper["institutions"]
             if not existing.get("s2_paper_id") and paper.get("s2_paper_id"):
                 existing["s2_paper_id"] = paper["s2_paper_id"]
+            if not existing.get("openalex_id") and paper.get("openalex_id"):
+                existing["openalex_id"] = paper["openalex_id"]
+            if not existing.get("related_works") and paper.get("related_works"):
+                existing["related_works"] = paper["related_works"]
+            if not existing.get("referenced_works") and paper.get("referenced_works"):
+                existing["referenced_works"] = paper["referenced_works"]
             if not existing.get("doi") and doi:
                 existing["doi"] = doi
                 doi_index[doi] = match_idx
@@ -397,7 +443,80 @@ def fetch_active_institutions_for_topic(query: str, config: AppConfig) -> list[d
     return [{"机构 / 实验室": k, "近期相关论文数": v} for k, v in counts.most_common(12)]
 
 
+def _resolve_openalex_work(paper: dict[str, Any], config: AppConfig) -> dict[str, Any] | None:
+    headers = {"User-Agent": USER_AGENT}
+    params: dict[str, Any] = {"select": "id,related_works,referenced_works"}
+    if config.openalex_api_key:
+        params["api_key"] = config.openalex_api_key
+
+    oa_id = (paper.get("openalex_id") or "").split("/")[-1]
+    if oa_id.startswith("W"):
+        resp = requests.get(
+            f"https://api.openalex.org/works/{oa_id}",
+            params=params,
+            headers=headers,
+            timeout=config.request_timeout,
+        )
+        if resp.status_code == 200:
+            return resp.json()
+    if paper.get("doi"):
+        resp = requests.get(
+            f"https://api.openalex.org/works/https://doi.org/{paper['doi']}",
+            params=params,
+            headers=headers,
+            timeout=config.request_timeout,
+        )
+        if resp.status_code == 200:
+            return resp.json()
+    return None
+
+
+def _batch_fetch_openalex_by_ids(short_ids: list[str], config: AppConfig) -> list[dict[str, Any]]:
+    if not short_ids:
+        return []
+    ids_filter = "|".join(short_ids[:8])
+    params: dict[str, Any] = {
+        "filter": f"openalex:{ids_filter}",
+        "per-page": 8,
+        "select": "id,doi,title,publication_year,cited_by_count,primary_location",
+    }
+    if config.openalex_api_key:
+        params["api_key"] = config.openalex_api_key
+    resp = requests.get(
+        "https://api.openalex.org/works",
+        params=params,
+        headers={"User-Agent": USER_AGENT},
+        timeout=config.request_timeout,
+    )
+    if resp.status_code != 200:
+        return []
+    out = []
+    for w in resp.json().get("results", []):
+        loc = w.get("primary_location") or {}
+        url = loc.get("landing_page_url") or w.get("doi") or w.get("id", "")
+        out.append(
+            {
+                "title": w.get("title") or "Untitled",
+                "year": w.get("publication_year") or "",
+                "citationCount": w.get("cited_by_count") or 0,
+                "url": url,
+            }
+        )
+    return out
+
+
 def fetch_similar_papers(paper: dict[str, Any], config: AppConfig, limit: int = 5) -> list[dict[str, Any]]:
+    """优先使用 OpenAlex related_works（免限流），未命中再回退 Semantic Scholar。"""
+    related_ids = paper.get("related_works") or []
+    if not related_ids:
+        oa_work = _resolve_openalex_work(paper, config)
+        if oa_work:
+            related_ids = [w.split("/")[-1] for w in (oa_work.get("related_works") or [])[:limit]]
+    if related_ids:
+        res = _batch_fetch_openalex_by_ids(related_ids[:limit], config)
+        if res:
+            return res
+
     ident = paper.get("s2_paper_id") or (f"DOI:{paper['doi']}" if paper.get("doi") else None)
     if not ident:
         return []
@@ -417,15 +536,57 @@ def fetch_similar_papers(paper: dict[str, Any], config: AppConfig, limit: int = 
 def fetch_citation_network(
     paper: dict[str, Any], config: AppConfig, limit: int = 5
 ) -> dict[str, list[dict[str, Any]]]:
+    """优先使用 OpenAlex cites + referenced_works（免限流），未命中再回退 Semantic Scholar。"""
+    out: dict[str, list[dict[str, Any]]] = {"citations": [], "references": []}
+
+    oa_id = (paper.get("openalex_id") or "").split("/")[-1]
+    ref_ids = paper.get("referenced_works") or []
+    if not oa_id.startswith("W") or not ref_ids:
+        oa_work = _resolve_openalex_work(paper, config)
+        if oa_work:
+            oa_id = (oa_work.get("id") or "").split("/")[-1]
+            if not ref_ids:
+                ref_ids = [w.split("/")[-1] for w in (oa_work.get("referenced_works") or [])[:limit]]
+
+    if oa_id.startswith("W"):
+        params: dict[str, Any] = {
+            "filter": f"cites:{oa_id}",
+            "sort": "publication_date:desc",
+            "per-page": limit,
+            "select": "id,doi,title,publication_year,cited_by_count,primary_location",
+        }
+        if config.openalex_api_key:
+            params["api_key"] = config.openalex_api_key
+        cit_resp = requests.get(
+            "https://api.openalex.org/works",
+            params=params,
+            headers={"User-Agent": USER_AGENT},
+            timeout=config.request_timeout,
+        )
+        if cit_resp.status_code == 200:
+            for w in cit_resp.json().get("results", []):
+                loc = w.get("primary_location") or {}
+                out["citations"].append(
+                    {
+                        "title": w.get("title") or "Untitled",
+                        "year": w.get("publication_year") or "",
+                        "citationCount": w.get("cited_by_count") or 0,
+                        "url": loc.get("landing_page_url") or w.get("doi") or w.get("id", ""),
+                    }
+                )
+        if ref_ids:
+            out["references"] = _batch_fetch_openalex_by_ids(ref_ids[:limit], config)
+        if out["citations"] or out["references"]:
+            return out
+
     ident = paper.get("s2_paper_id") or (f"DOI:{paper['doi']}" if paper.get("doi") else None)
     if not ident:
-        return {"citations": [], "references": []}
+        return out
     headers = {"User-Agent": USER_AGENT}
     if config.semantic_scholar_api_key:
         headers["x-api-key"] = config.semantic_scholar_api_key
     encoded = urllib.parse.quote(ident)
 
-    out: dict[str, list[dict[str, Any]]] = {"citations": [], "references": []}
     cit_resp = requests.get(
         f"https://api.semanticscholar.org/graph/v1/paper/{encoded}/citations",
         params={"fields": "title,year,citationCount,url", "limit": limit},
@@ -529,3 +690,86 @@ def fetch_daily_frontier(config: AppConfig) -> tuple[dict[str, list[dict[str, An
                 warnings.append(f"今日前沿部分频道暂不可用：{label}")
 
     return buckets, warnings
+
+
+def search_latest_frontier_papers(query: str, config: AppConfig, days: int = 30) -> list[dict[str, Any]]:
+    """今日前沿实时检索：按日期倒序拉取 arXiv + OpenAlex 近 N 天最新论文。"""
+    results: list[dict[str, Any]] = []
+    q_clean = query.strip()
+    if not q_clean:
+        return results
+
+    # 1) arXiv 按提交日期倒序
+    try:
+        q_enc = urllib.parse.quote(f"all:{q_clean}")
+        url = (
+            f"https://export.arxiv.org/api/query?search_query={q_enc}"
+            f"&sortBy=submittedDate&sortOrder=descending&max_results=10"
+        )
+        resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=config.request_timeout)
+        if resp.status_code == 200:
+            ns = {"a": "http://www.w3.org/2005/Atom"}
+            root = ET.fromstring(resp.text)
+            for entry in root.findall("a:entry", ns):
+                t_el = entry.find("a:title", ns)
+                id_el = entry.find("a:id", ns)
+                p_el = entry.find("a:published", ns)
+                s_el = entry.find("a:summary", ns)
+                authors = [
+                    a.find("a:name", ns).text
+                    for a in entry.findall("a:author", ns)[:4]
+                    if a.find("a:name", ns) is not None and a.find("a:name", ns).text
+                ]
+                if t_el is not None and t_el.text:
+                    results.append(
+                        {
+                            "source": "arXiv 最新",
+                            "title": re.sub(r"\s+", " ", t_el.text).strip(),
+                            "url": id_el.text.strip() if id_el is not None and id_el.text else "",
+                            "published": (p_el.text or "")[:10] if p_el is not None else "",
+                            "authors": authors,
+                            "summary": re.sub(r"\s+", " ", (s_el.text or "")).strip()[:260] if s_el is not None else "",
+                        }
+                    )
+    except Exception:
+        pass
+
+    # 2) OpenAlex 近 N 天最新发表
+    try:
+        since_date = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+        params: dict[str, Any] = {
+            "search": q_clean,
+            "filter": f"from_publication_date:{since_date}",
+            "sort": "publication_date:desc",
+            "per-page": 10,
+            "select": "id,doi,title,publication_date,authorships,primary_location",
+        }
+        if config.openalex_api_key:
+            params["api_key"] = config.openalex_api_key
+        oa_resp = requests.get(
+            "https://api.openalex.org/works",
+            params=params,
+            headers={"User-Agent": USER_AGENT},
+            timeout=config.request_timeout,
+        )
+        if oa_resp.status_code == 200:
+            for w in oa_resp.json().get("results", []):
+                loc = w.get("primary_location") or {}
+                authors = [(a.get("author") or {}).get("display_name", "") for a in (w.get("authorships") or [])[:4]]
+                title = (w.get("title") or "").strip()
+                if title:
+                    results.append(
+                        {
+                            "source": "OpenAlex 最新",
+                            "title": title,
+                            "url": loc.get("landing_page_url") or w.get("doi") or w.get("id", ""),
+                            "published": w.get("publication_date") or "",
+                            "authors": [a for a in authors if a],
+                            "summary": "",
+                        }
+                    )
+    except Exception:
+        pass
+
+    results.sort(key=lambda x: x.get("published", ""), reverse=True)
+    return results
