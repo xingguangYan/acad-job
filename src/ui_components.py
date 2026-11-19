@@ -10,6 +10,7 @@ from src.academic_api import (
     fetch_active_institutions_for_topic,
     fetch_citation_network,
     fetch_similar_papers,
+    search_latest_frontier_papers,
 )
 from src.config import AppConfig, LLM_PRESETS
 from src.cv_matcher import extract_text_from_cv_file
@@ -99,7 +100,7 @@ def render_sidebar_config() -> dict[str, str]:
             st.text_input("API Key / 魔搭 Token", key="ui_llm_api_key", type="password", placeholder="sk-... 或 ms-...")
 
             llm_cfg = get_llm_settings(st.session_state)
-            if st.button("测试模型连通性", use_container_width=True):
+            if st.button("测试模型连通性", key="test_llm_conn_btn", use_container_width=True):
                 with st.spinner("正在测试连接…"):
                     ok, msg = test_llm_connection(llm_cfg)
                 if ok:
@@ -138,10 +139,56 @@ def render_sidebar_config() -> dict[str, str]:
     return get_llm_settings(st.session_state)
 
 
-def render_daily_frontier(buckets: dict[str, list[dict[str, Any]]], warnings: list[str]) -> None:
+def render_daily_frontier(
+    buckets: dict[str, list[dict[str, Any]]],
+    warnings: list[str],
+    config: AppConfig | None = None,
+    key_prefix: str = "frontier",
+) -> None:
     st.subheader("📰 今日前沿（Daily Frontier）")
     if warnings:
         st.caption(" · ".join(warnings))
+
+    if config is not None:
+        fc1, fc2, fc3 = st.columns([3.2, 1.3, 1.1])
+        with fc1:
+            f_query = st.text_input(
+                "🔍 实时检索最新前沿论文（支持英文关键词，按发布日期倒序）",
+                placeholder="例如：embodied AI, perovskite, CRISPR, reasoning model",
+                key=f"{key_prefix}_search_q",
+            )
+        with fc2:
+            f_days = st.selectbox(
+                "时间窗口",
+                [7, 30, 90],
+                index=1,
+                format_func=lambda d: f"近 {d} 天",
+                key=f"{key_prefix}_days",
+            )
+        with fc3:
+            st.write("")
+            st.write("")
+            f_btn = st.button("获取最新论文", type="primary", use_container_width=True, key=f"{key_prefix}_btn")
+
+        if f_btn and f_query.strip():
+            with st.spinner(f"正在检索近 {f_days} 天「{f_query.strip()}」最新前沿…"):
+                st.session_state[f"{key_prefix}_results"] = search_latest_frontier_papers(
+                    f_query.strip(), config, days=f_days
+                )
+
+        f_results = st.session_state.get(f"{key_prefix}_results")
+        if f_results is not None:
+            st.markdown(f"**🔎 实时最新前沿结果（共 {len(f_results)} 篇，按日期倒序）：**")
+            if not f_results:
+                st.info("该时间窗口内未找到匹配新论文，建议放宽至近 30/90 天或使用英文关键词。")
+            for item in f_results[:15]:
+                with st.container(border=True):
+                    title_md = f"[{item['title']}]({item['url']})" if item.get("url") else item["title"]
+                    st.markdown(f"**`{item['source']}` {title_md}**")
+                    st.caption(f"📅 {item.get('published', '')} · 👤 {', '.join(item.get('authors', []))}")
+                    if item.get("summary"):
+                        st.write(item["summary"] + "...")
+            st.divider()
 
     cols = st.columns(2)
     for idx, (label, papers) in enumerate(buckets.items()):
@@ -177,6 +224,7 @@ def render_paper_card(
     compot_loaded: bool,
 ) -> None:
     uid = paper["uid"]
+    k_uid = f"{idx}_{uid[:24]}"
     trl_cache: dict[str, Any] = st.session_state.setdefault("trl_cache", {})
     ai_sum_cache: dict[str, str] = st.session_state.setdefault("ai_sum_cache", {})
     sim_cache: dict[str, Any] = st.session_state.setdefault("similar_cache", {})
@@ -193,7 +241,7 @@ def render_paper_card(
 
         b1, b2, b3, b4, b5 = st.columns([1.2, 1.2, 1.1, 1.1, 1.2])
         with b1:
-            if st.button("深度评估 TRL", key=f"trl_btn_{idx}_{uid}", use_container_width=True):
+            if st.button("深度评估 TRL", key=f"trl_btn_{k_uid}", use_container_width=True):
                 with st.spinner("正在评估技术就绪度…"):
                     desc = paper.get("tldr") or paper.get("abstract") or paper["title"]
                     if config.apify_api_token:
@@ -212,7 +260,7 @@ def render_paper_card(
                         }
 
         with b2:
-            if st.button("🤖 AI 精读", key=f"aisum_btn_{idx}_{uid}", use_container_width=True):
+            if st.button("🤖 AI 精读", key=f"aisum_btn_{k_uid}", use_container_width=True):
                 if not llm_cfg.get("api_key"):
                     ai_sum_cache[uid] = "⚠️ 请先在左侧边栏「🤖 大模型 API」填入您的 API Key。"
                 else:
@@ -224,7 +272,7 @@ def render_paper_card(
                             ai_sum_cache[uid] = f"⚠️ AI 精读失败：{type(exc).__name__}"
 
         with b3:
-            if st.button("相似论文", key=f"sim_btn_{idx}_{uid}", use_container_width=True):
+            if st.button("相似论文", key=f"sim_btn_{k_uid}", use_container_width=True):
                 with st.spinner("正在检索相似论文…"):
                     try:
                         sim_cache[uid] = fetch_similar_papers(paper, config)
@@ -232,7 +280,7 @@ def render_paper_card(
                         sim_cache[uid] = {"error": "相似论文接口限流或暂不可用"}
 
         with b4:
-            if st.button("引用网络", key=f"cit_btn_{idx}_{uid}", use_container_width=True):
+            if st.button("引用网络", key=f"cit_btn_{k_uid}", use_container_width=True):
                 with st.spinner("正在加载引用关系…"):
                     try:
                         cit_cache[uid] = fetch_citation_network(paper, config)
@@ -242,7 +290,7 @@ def render_paper_card(
         with b5:
             if paper.get("pdf_url"):
                 st.link_button("📄 PDF 原文", paper["pdf_url"], use_container_width=True)
-            elif st.button("💼 查相关岗位", key=f"joblink_{idx}_{uid}", use_container_width=True):
+            elif st.button("💼 查相关岗位", key=f"joblink_{k_uid}", use_container_width=True):
                 short_kw = " ".join(paper["title"].split()[:4])
                 st.session_state["job_query_prefill"] = short_kw
                 st.toast(f"已将「{short_kw}」同步至「💼 工作」栏目！")
@@ -254,7 +302,7 @@ def render_paper_card(
             else:
                 render_trl_scale(res)
 
-        if uid in ai_sum_cache:
+        if ai_sum_cache.get(uid):
             st.success(ai_sum_cache[uid])
 
         if uid in sim_cache:
@@ -283,13 +331,23 @@ def render_paper_card(
                     with c_col:
                         st.markdown("**近期施引论文**")
                         for cp in cit_res.get("citations", []) or []:
-                            st.markdown(f"- {cp.get('title', 'Untitled')} ({cp.get('year', '')})")
+                            cp_title = cp.get("title", "Untitled")
+                            cp_url = cp.get("url", "")
+                            st.markdown(
+                                f"- [{cp_title}]({cp_url}) ({cp.get('year', '')})"
+                                if cp_url else f"- {cp_title} ({cp.get('year', '')})"
+                            )
                         if not cit_res.get("citations"):
                             st.caption("暂无记录")
                     with r_col:
                         st.markdown("**参考文献**")
                         for rp in cit_res.get("references", []) or []:
-                            st.markdown(f"- {rp.get('title', 'Untitled')} ({rp.get('year', '')})")
+                            rp_title = rp.get("title", "Untitled")
+                            rp_url = rp.get("url", "")
+                            st.markdown(
+                                f"- [{rp_title}]({rp_url}) ({rp.get('year', '')})"
+                                if rp_url else f"- {rp_title} ({rp.get('year', '')})"
+                            )
                         if not cit_res.get("references"):
                             st.caption("暂无记录")
 
@@ -379,7 +437,7 @@ def render_cv_panel(llm_cfg: dict[str, str], all_jobs: list[dict[str, Any]]) -> 
 
         b_parse, b_match, b_clear = st.columns([1.3, 1.6, 0.9])
         with b_parse:
-            if st.button("🤖 AI 解析 CV 简历", type="primary", use_container_width=True):
+            if st.button("🤖 AI 解析 CV 简历", key="cv_parse_btn", type="primary", use_container_width=True):
                 if not llm_cfg.get("api_key"):
                     st.error("请先在左侧边栏「🤖 大模型 API」填入您的 API Key，再执行解析！")
                 else:
@@ -397,7 +455,7 @@ def render_cv_panel(llm_cfg: dict[str, str], all_jobs: list[dict[str, Any]]) -> 
                         st.error(f"CV 解析失败：{exc}")
 
         with b_match:
-            if st.button("🎯 根据 CV 自动匹配并排序岗位", use_container_width=True):
+            if st.button("🎯 根据 CV 自动匹配并排序岗位", key="cv_match_btn", use_container_width=True):
                 profile_txt = _format_cv_profile_text() or cv_manual_text.strip() or st.session_state.get("current_query", "")
                 if not profile_txt:
                     st.warning("请先解析 CV 或填写背景关键词后再执行自动匹配。")
@@ -407,7 +465,7 @@ def render_cv_panel(llm_cfg: dict[str, str], all_jobs: list[dict[str, Any]]) -> 
                     st.success("已完成岗位智能匹配排序！下方列表已按匹配度从高到低展示。")
 
         with b_clear:
-            if st.button("🗑️ 清空 CV", use_container_width=True):
+            if st.button("🗑️ 清空 CV", key="cv_clear_btn", use_container_width=True):
                 for k in ("cv_parsed_profile", "cv_matched_jobs", "cv_extracted_text"):
                     st.session_state.pop(k, None)
                 st.rerun()
@@ -445,10 +503,8 @@ def render_jobs_tab(
     uploaded_jobs = st.session_state.get("uploaded_jobs", [])
     all_jobs = uploaded_jobs + base_jobs
 
-    # 1. CV 简历上传与 AI 自动匹配板块
     render_cv_panel(llm_cfg, all_jobs)
 
-    # 2. 导入 acad-job 数据
     with st.expander("📤 导入自定义岗位数据（兼容 acad-job 导出的 CSV / JSON）", expanded=False):
         uploaded = st.file_uploader("拖入 CSV 或 JSON 文件，立即合并至岗位池", type=["csv", "json"], key="acad_job_uploader")
         if uploaded is not None:
@@ -459,7 +515,6 @@ def render_jobs_tab(
             except Exception as exc:
                 st.error(f"解析失败：{exc}")
 
-    # 若已完成 CV 批量匹配排序，优先展示带匹配分的列表
     active_job_pool = st.session_state.get("cv_matched_jobs") or all_jobs
 
     col_kw, col_cat, col_loc = st.columns([3, 1.5, 1.5])
@@ -579,7 +634,7 @@ def render_grants_tab(
     with sub_catalog:
         gc1, gc2, gc3 = st.columns([2.6, 1.5, 1.5])
         with gc1:
-            g_kw = st.text_input("检索基金关键词（如 MSCA, NSFC, Postdoc, AI, Biology）", key="grant_kw")
+            g_kw = st.text_input("检索基金关键词（留空查看全部，如 MSCA, NSFC, Postdoc, AI）", key="grant_kw")
         with gc2:
             g_stage = st.selectbox("适用阶段", ["全部", "PhD", "Postdoc", "Early-Career"], key="grant_stage")
         with gc3:
@@ -597,7 +652,7 @@ def render_grants_tab(
         tracked_names = {t["name"] for t in tracker}
 
         if not filtered_grants:
-            st.info("当前筛选条件下暂无基金项目，请放宽条件。")
+            st.info("当前筛选条件下暂无基金项目，请放宽条件或清空关键词。")
 
         for idx, grant in enumerate(filtered_grants):
             g_uid = f"{idx}_{grant['name'][:18]}"
