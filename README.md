@@ -1,13 +1,4 @@
----
-domain:
-  - nlp
-tags:
-  - streamlit
-  - academic-search
-deployspec:
-  entry_file: app.py
-license: Apache License 2.0
----
+
 
 # acad-job · 科研前沿 × 产业化 × 学术求职与基金聚合器
 
