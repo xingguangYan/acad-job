@@ -10,13 +10,14 @@
 
 > 🔗 **直接访问项目主页：** [github.com/xingguangYan/acad-job](https://github.com/xingguangYan/acad-job)  
 > 📖 **在线阅读 README：** [README.md](https://github.com/xingguangYan/acad-job/blob/main/README.md)  
-> ✏️ **维护者编辑入口（需登录且具备写权限）：** [Edit README](https://github.com/xingguangYan/acad-job/edit/main/README.md)
+
 
 **标签 / Topics：** `academic-jobs` · `research-tools` · `streamlit` · `openalex` · `semantic-scholar` · `arxiv` · `patentsview` · `cv-matching` · `research-grants` · `ai-for-science` · `commercialization`
 
 **一个 Streamlit 单文件应用**：把「学术文献检索 → 产业化信号（arXiv 趋势 / 专利 / TRL）→ 学术岗位聚合与 CV 匹配 → 青年科研基金追踪」串成一条主线，帮助科研求职者、青年 PI 和产业化分析师在同一个界面里完成「看方向、看机会、看钱」。
 
-![应用界面](<img width="2560" height="1271" alt="image" src="https://github.com/user-attachments/assets/2ddb59fc-87cd-445a-9cc0-b2b5108fa1c3" />)
+<img width="2560" height="1271" alt="image" src="https://github.com/user-attachments/assets/bd014821-7a03-4efa-b92f-69e05cb18f98" />
+
 
 ## 功能一览
 
@@ -27,6 +28,7 @@
 | 基金与资助 | 💰 | 青年科研基金库（NSFC 青年项目等），支持资格筛选、资格核验与进度追踪，可上传自定义基金清单 |
 | 今日前沿 | 📰 | 每日拉取 arXiv / bioRxiv / medRxiv 最新预印本，按领域分桶速览 |
 | 支持与合作 | ☕ | 作者联系方式与赞赏码，以及运行环境数据状态面板 |
+<img width="1671" height="938" alt="image" src="https://github.com/user-attachments/assets/9ad493d4-6d9e-40c0-b401-e48fbd08a40c" />
 
 ## 项目结构
 
