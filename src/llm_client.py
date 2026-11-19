@@ -35,7 +35,7 @@ def call_llm(
     system_prompt: str,
     user_prompt: str,
     llm_cfg: dict[str, str],
-    max_tokens: int = 800,
+    max_tokens: int = 1500,
     temperature: float = 0.25,
 ) -> str:
     if not llm_cfg.get("api_key"):
@@ -62,8 +62,11 @@ def call_llm(
         timeout=60,
     )
     resp.raise_for_status()
-    return resp.json()["choices"][0]["message"]["content"].strip()
-
+    msg = resp.json()["choices"][0]["message"]
+    content = (msg.get("content") or "").strip()
+    if not content:
+        content = (msg.get("reasoning_content") or "").strip()
+    return content
 
 def test_llm_connection(llm_cfg: dict[str, str]) -> tuple[bool, str]:
     try:
@@ -80,10 +83,12 @@ def test_llm_connection(llm_cfg: dict[str, str]) -> tuple[bool, str]:
 
 
 def _strip_reasoning_tags(raw: str) -> str:
-    """移除推理模型可能输出的 <think>...</think> 过程，并剥离 markdown 代码围栏。"""
+    """移除 <think>...</think>，但若正文因此变空则保留可读内容，防止输出空白卡片。"""
     cleaned = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL | re.IGNORECASE).strip()
+    if not cleaned:
+        cleaned = re.sub(r"</?think>", "", raw, flags=re.IGNORECASE).strip()
     fenced = re.search(r"```(?:json)?\s*(.*?)```", cleaned, re.DOTALL | re.IGNORECASE)
-    if fenced:
+    if fenced and fenced.group(1).strip():
         return fenced.group(1).strip()
     return cleaned
 
@@ -129,14 +134,15 @@ def llm_assess_trl(title: str, abstract: str, llm_cfg: dict[str, str]) -> dict[s
         f"标题：{title}\n摘要：{abstract[:1500]}"
     )
     raw = call_llm(
-        "你是资深科技成果转化与技术尽调专家，只输出标准 JSON 对象，不要输出其他文字。",
+        "你是资深科技成果转化与技术尽调专家，请直接输出标准 JSON 对象。",
         prompt,
         llm_cfg,
-        max_tokens=500,
+        max_tokens=1500,
     )
     trl_num = None
     grade = None
-    summary = _strip_reasoning_tags(raw)[:300]
+    fallback_txt = _strip_reasoning_tags(raw)
+    summary = fallback_txt[:350] if fallback_txt else "模型已返回响应，但未解析出文字说明，建议切换非推理指令模型（如 Qwen2.5-72B-Instruct）。"
     parsed = _extract_json_object(raw)
     if isinstance(parsed, dict):
         if parsed.get("trl") is not None:
@@ -145,8 +151,20 @@ def llm_assess_trl(title: str, abstract: str, llm_cfg: dict[str, str]) -> dict[s
             except (TypeError, ValueError):
                 trl_num = None
         grade = parsed.get("commercial_grade")
-        summary = parsed.get("summary") or summary
+        if parsed.get("summary"):
+            summary = str(parsed["summary"])
     return {"trl": trl_num, "commercial_grade": grade, "summary": f"[AI 评估] {summary}", "source": "LLM"}
+
+
+def llm_summarize_paper(title: str, abstract: str, llm_cfg: dict[str, str]) -> str:
+    prompt = (
+        "请用中文分 3 点精读这篇论文（每点不超过 45 字）：\n"
+        "1. 核心创新点\n2. 关键技术路线/实验结论\n3. 潜在产业应用场景\n\n"
+        f"标题：{title}\n摘要：{abstract[:1800]}"
+    )
+    raw = call_llm("你是面向科研人员与技术转移顾问的论文精读助手。", prompt, llm_cfg, max_tokens=1500)
+    res = _strip_reasoning_tags(raw)
+    return res or "模型返回内容为空，建议切换为指令对话模型（如 Qwen/Qwen2.5-72B-Instruct 或 deepseek-chat）后重试。"
 
 
 def llm_summarize_paper(title: str, abstract: str, llm_cfg: dict[str, str]) -> str:
