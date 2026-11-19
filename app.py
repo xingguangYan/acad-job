@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from src.academic_api import fetch_daily_frontier, search_academic_papers
+from src.academic_api import TIME_RANGE_YEARS, fetch_daily_frontier, search_academic_papers
 from src.config import DOMAIN_OPTIONS, HOT_TOPICS, load_config
 from src.grant_signals import load_static_grants
 from src.industrial_signals import (
@@ -120,12 +120,12 @@ tab_search, tab_jobs, tab_grants, tab_frontier, tab_about = st.tabs(
 with tab_frontier:
     with st.spinner("正在拉取 arXiv / bioRxiv / medRxiv 今日最新预印本…"):
         buckets, frontier_warnings = get_cached_daily_frontier()
-    render_daily_frontier(buckets, frontier_warnings)
+    render_daily_frontier(buckets, frontier_warnings, config=config, key_prefix="tab_frontier")
 
 with tab_search:
-    with st.expander("📰 今日前沿速览（arXiv / bioRxiv / medRxiv 每日开场信号）", expanded=False):
+    with st.expander("📰 今日前沿速览（支持实时搜索最新论文）", expanded=False):
         buckets, frontier_warnings = get_cached_daily_frontier()
-        render_daily_frontier(buckets, frontier_warnings)
+        render_daily_frontier(buckets, frontier_warnings, config=config, key_prefix="exp_frontier")
 
     st.markdown("**🔥 热门研究方向快查：**")
     hot_cols = st.columns(len(HOT_TOPICS))
@@ -135,7 +135,7 @@ with tab_search:
             clicked_hot = topic
 
     with st.form("search_form", clear_on_submit=False):
-        col_q, col_d, col_btn = st.columns([4, 1.5, 1])
+        col_q, col_d, col_t, col_btn = st.columns([3.5, 1.2, 1.3, 1.0])
         with col_q:
             query_input = st.text_input(
                 "检索主题（支持中英文自然语言，英文学术关键词命中率更佳）",
@@ -144,6 +144,8 @@ with tab_search:
             )
         with col_d:
             domain_input = st.selectbox("领域筛选", options=list(DOMAIN_OPTIONS.keys()), index=0)
+        with col_t:
+            time_input = st.selectbox("时间范围", options=list(TIME_RANGE_YEARS.keys()), index=0)
         with col_btn:
             st.write("")
             st.write("")
@@ -152,12 +154,15 @@ with tab_search:
     run_query = clicked_hot or (query_input.strip() if submitted and query_input.strip() else "")
     if run_query:
         st.session_state["current_query"] = run_query
+        st.session_state["current_time_range"] = time_input
         history: list[str] = st.session_state.setdefault("search_history", [])
         if run_query not in history:
             history.append(run_query)
 
-        with st.spinner(f"正在检索「{run_query}」并注入产业化信号…"):
-            papers, search_warnings = search_academic_papers(run_query, domain_input, config)
+        with st.spinner(f"正在检索「{run_query}」（{time_input}）并注入产业化信号…"):
+            papers, search_warnings = search_academic_papers(
+                run_query, domain_input, config, time_range=time_input
+            )
             attach_commercial_potential(papers, compot_index)
             trend_data, patent_data = get_cached_topic_signals(run_query)
 
@@ -174,7 +179,7 @@ with tab_search:
         st.warning(w)
 
     if active_query and not results:
-        st.info("未找到匹配文献，建议尝试英文关键词或切换领域为“全部”。")
+        st.info("未找到匹配文献，建议尝试英文关键词或放宽时间范围 / 领域筛选。")
 
     if results:
         export_df = pd.DataFrame(
@@ -193,7 +198,8 @@ with tab_search:
         )
         c_cnt, c_exp = st.columns([4, 1])
         with c_cnt:
-            st.subheader(f"检索结果（共 {len(results)} 篇，已去重合并）")
+            tr_label = st.session_state.get("current_time_range", "全部时间")
+            st.subheader(f"检索结果（共 {len(results)} 篇 · {tr_label}）")
         with c_exp:
             st.download_button(
                 "导出 CSV",
