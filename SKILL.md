@@ -1,44 +1,39 @@
 ---
 name: acad-job
-description: Guide building a ModelScope Studio academic job aggregation and matching platform, packaged as an Agent-callable skill with parse_academic_cv and search_academic_jobs.
+description: Build and run the acad-job Streamlit app that aggregates academic papers, industrial signals, jobs with CV matching, and early-career grants in one dashboard.
 ---
 
-# Academic Job Match
+# acad-job
 
 ## Purpose
-Build and run the PRD platform: a ModelScope Studio Gradio/Streamlit app that aggregates global academic jobs, parses academic CVs, matches jobs with explainable scores, and packages the core capability as an Agent skill exposing `parse_academic_cv` and `search_academic_jobs`.
+Build, run, and extend the Streamlit application `app.py`: academic paper search (OpenAlex / Semantic Scholar / arXiv), industrialization signals (arXiv 90-day trend, PatentsView, TRL), academic job aggregation with CV-based matching, and early-career grant tracking.
 
 ## When to use
-Use when the user wants the academic job matcher from the pasted PRD, starting with AcademicJobsOnline in Phase 1, then adding EURAXESS, Academic Positions, and FacultyVacancies one adapter at a time.
+Use when the user wants to run or modify this aggregator dashboard, add a new data source or tab, adjust matching logic, or deploy the app to ModelScope Studio or Streamlit Cloud.
 
 ## When not to use
-Do not use for non-academic job boards, cover-letter or resume writing, resume fabrication, crawling without robots.txt/crawl-delay compliance, hardcoding secrets, or claiming complete global coverage.
+Do not use for non-academic job boards, writing or rewriting cover letters, altering user resume content, bypassing robots.txt / crawl-delay, or hardcoding API keys and tokens.
 
-## Core capabilities
-`parse_academic_cv(file_path)` parses PDF/DOCX through ModelScope Qwen, validates the profile schema, falls back to rule extraction on failure, and returns a structured academic profile without altering user content.
-`search_academic_jobs(profile, filters)` applies hard filters (position level, country, deadline), then soft ranking (embedding/semantic relevance plus publications and skills), and returns jobs with `match_score` 0-100 and explainable `match_reasons`.
+## Entry points
+- Run: `streamlit run app.py`
+- Configuration: left sidebar (session-only keys) or environment variables listed in README
+- Data paths default to `data/academic_jobs.csv`, `data/research_grants.csv.csv`, `data/commercial_potential.csv`
 
-## Phases
-1. Phase 1: scaffold the project, implement only the AcademicJobsOnline adapter, complete local “upload CV → parse → match → display,” and verify `python app.py`.
-2. Phase 2: deploy to ModelScope Studio as Gradio/Streamlit; put secrets in Studio Secrets, persist data under `/mnt/workspace/data`.
-3. Phase 3: add EURAXESS, Academic Positions, then FacultyVacancies adapters, one at a time.
-4. Phase 4: package `SKILL.md`, expose the two Agent functions, and test Agent invocation.
-Stop after each phase and confirm before adding another data source.
-
-## Scaffolding
-Run `python scripts/scaffold_phase1.py --out <project-dir> --force`. It writes `app.py`, `cv_parser.py`, `job_adapters/ajo.py`, `matcher.py`, `schema.py`, and `requirements.txt`. Configure the API endpoints marked `CONFIGURE` before live use.
-
-## Unified schema (summary)
-Job: `job_id`, `source`, `title`, `position_level`, `institution`, `country` ISO 3166-1 alpha-2, `city`, `discipline`, `deadline`, `posted_date`, `url`, `description_full`, `requirements_extracted`, `funding_duration`, plus runtime `match_score` and `match_reasons`.
-Profile: degrees, expected graduation, 3-8 research areas, publication counts and top venues, skills, languages, inferred applicable `position_level` range, accepted countries, and `parsing_note` when fallback extraction was used.
+## Module map
+- `app.py`: page config, caching (`st.cache_data` / `st.cache_resource`), tab orchestration
+- `src/academic_api.py`: paper search and dedup across OpenAlex, Semantic Scholar, arXiv; daily preprint buckets
+- `src/industrial_signals.py`: arXiv 90-day trend, PatentsView patents, commercial potential index, TRL via Apify
+- `src/job_signals.py`: static jobs CSV, live RSS job feeds, filtering
+- `src/grant_signals.py`: static grants, filtering, eligibility pre-check
+- `src/cv_matcher.py`: resume text extraction and job matching (hard filter then soft rank)
+- `src/llm_client.py`: OpenAI-compatible LLM presets; keys are session-only
+- `src/ui_components.py` and `src/styles.py`: tabs, cards, KPIs, hero, footer
 
 ## Constraints
-One adapter per source; map every source to the unified schema; deduplicate by `source + job_id` or `institution + title + deadline`. Run hard filters before soft ranking. AJO requires 5 seconds/page crawl delay and robots.txt compliance. Never write Apify tokens or model API keys into code; use environment variables or Studio Secrets. Local development uses `data/`; Studio uses `/mnt/workspace/data`. Do not write cover letters; only hint at missing requirements. Label data sources and coverage limits honestly.
+Deduplicate jobs by source plus job id. Run hard filters (position level, country, deadline) before soft ranking and always return explainable match reasons. Keep secrets in environment variables or session state only; never commit them. Respect each upstream site's robots.txt and crawl-delay.
+
+## Extension pattern
+Add a new data source as its own small module under `src/` (loader plus fetcher), wire it through a cache helper in `app.py`, and render it inside an existing tab or a new one. Do not build one universal crawler.
 
 ## Validation
-Run the scaffold into a temporary directory, then `python app.py`, upload a sample academic CV, and confirm parsing and job listing work. After editing this skill itself, run the skill-creator validator (`C:\Users\Administrator\.codex\skills\.system\skill-creator\scripts\quick_validate.py`) against this folder.
-
-For data-source details, ModelScope deployment rules, and compliance wording, read [references/architecture.md](references/architecture.md) before Phase 2 or adding an adapter.
-
-
-
+Run `streamlit run app.py` locally and confirm the five tabs render, static CSVs load, and search plus CV upload behave. After editing this skill itself, run the skill-creator validator (`C:\Users\Administrator\.codex\skills\.system\skill-creator\scripts\quick_validate.py`).

@@ -1,145 +1,113 @@
-# acad-job
+---
+domain:
+  - nlp
+tags:
+  - streamlit
+  - academic-search
+deployspec:
+  entry_file: app.py
+license: Apache License 2.0
+---
 
-**AI 驱动全球学术求职聚合与匹配平台 — Codex Skill**
+# acad-job · 科研前沿 × 产业化 × 学术求职与基金聚合器
 
-本 Skill 将学术职位聚合、简历解析、职位匹配能力封装为可被 Claude Code、Cursor 等 Agent 调用的 Skill，核心暴露两个工具函数：
+**一个 Streamlit 单文件应用**：把「学术文献检索 → 产业化信号（arXiv 趋势 / 专利 / TRL）→ 学术岗位聚合与 CV 匹配 → 青年科研基金追踪」串成一条主线，帮助科研求职者、青年 PI 和产业化分析师在同一个界面里完成「看方向、看机会、看钱」。
 
-- `parse_academic_cv(file_path)` → 返回结构化学术画像（PDF/DOCX/TXT 简历 → 学位、研究方向、发表记录、技能、语言、适用职位级别等）
-- `search_academic_jobs(profile, filters)` → 返回经过硬过滤 + 软排序的学术职位列表（匹配分数 0–100 + 可解释匹配理由）
+![应用界面](assets/app_screenshot.png)
 
-## 适用场景
-- 面向全球学术求职者：本科生 RA、硕士/博士、博士后、助理教授、副教授、教授、Research Fellow / Scientist / PI
-- 职位覆盖：AcademicJobsOnline（Phase 1 主源）、EURAXESS、Academic Positions、FacultyVacancies、国内理聘等（逐阶段接入）
-- 核心价值：双层评分（硬过滤 position_level/country/deadline + 软排序语义相似度与发表匹配）、可解释匹配理由、不代写求职信、不伪造简历内容
+## 功能一览
 
-## 不做什么
-- ❌ 不代写求职信、简历或申请材料
-- ❌ 不伪造或修改用户简历内容（只提示缺失项，由用户自行修正）
-- ❌ 不绕过目标站点 robots.txt / crawl-delay
-- ❌ 不在代码中硬编码 Apify Token、ModelScope API Key 等敏感信息
-- ❌ 不宣称“全球最全” —— 非英语国家本土语言职位可能覆盖不足，界面会标注数据来源与覆盖说明
-
-## 快速开始
-
-### 前提条件
-- Python 3.9+
-- ModelScope 账号及 API Key（用于 Qwen 简历解析与嵌入式模型）
-- （可选）Apify Token（用于 EURAXESS、Academic Positions 等源，Phase 1 无需）
-
-### 安装依赖
-
-```bash
-pip install -r requirements.txt
-```
-
-`requirements.txt` 包含：`modelscope`、`gradio`、`pdfplumber`、`python-docx`、`requests`
-
-### 本地运行（Phase 1：AcademicJobsOnline）
-
-```bash
-# 配置环境变量（建议放在 .env 中，不要提交到 Git）
-export MODELSCOPE_API_BASE="https://api-inference.modelscope.cn/v1"
-export MODELSCOPE_API_KEY="your-modelscope-api-key"
-export AJO_API_URL="https://api.academicjobsonline.org/v1/jobs"   # 需核实实际 AJO 公开 JSON API 地址
-
-# 启动 Gradio 界面
-python app.py
-```
-
-打开浏览器访问 `http://127.0.0.1:7860`，上传简历 → 解析 → 刷新 AJO 职位 → 设置筛选条件 → 搜索匹配职位。
+| 模块 | 标签页 | 做什么 |
+|------|--------|--------|
+| 检索与发现 | 🔍 | 中英文自然语言检索论文（OpenAlex / Semantic Scholar / arXiv 去重合并），自动注入商业潜力分级、arXiv 90 天趋势与 PatentsView 专利信号，支持结果导出 CSV |
+| 工作与 CV 匹配 | 💼 | 静态精选岗位库 + 实时 RSS 学术岗位流，支持上传简历（PDF/DOCX/TXT）由大模型解析画像，并与岗位做硬过滤 + 软排序匹配，输出可解释匹配理由 |
+| 基金与资助 | 💰 | 青年科研基金库（NSFC 青年项目等），支持资格筛选、资格核验与进度追踪，可上传自定义基金清单 |
+| 今日前沿 | 📰 | 每日拉取 arXiv / bioRxiv / medRxiv 最新预印本，按领域分桶速览 |
+| 支持与合作 | ☕ | 作者联系方式与赞赏码，以及运行环境数据状态面板 |
 
 ## 项目结构
 
 ```text
 acad-job/
-├── SKILL.md                    # Skill 说明（调用边界、能力边界、不适用场景）
-├── README.md                   # 本文件
-├── agents/openai.yaml          # Codex 自动发现与 UI 元数据
-├── job_adapters/
-│   └── __init__.py             # 职位适配器包标记
-├── references/
-│   └── architecture.md         # 数据源、统一 Schema、部署与合规细节（按需阅读）
+├── app.py                      # Streamlit 入口（页面配置、缓存、标签页编排）
+├── requirements.txt            # Python 依赖
+├── gitignore.txt
+├── assets/
+│   ├── coffee_qr.png           # 赞赏码
+│   └── app_screenshot.png      # README 界面截图
+├── data/                       # 静态数据（可被环境变量覆盖路径）
+│   ├── academic_jobs.csv       # 精选岗位库（标题/机构/地点/薪资/截止日期/标签/链接）
+│   ├── research_grants.csv.csv # 青年基金库（资助方/阶段/金额/资格/截止）
+│   └── commercial_potential.csv # 商业潜力切片索引（DOI → 分级）
+├── src/
+│   ├── academic_api.py         # OpenAlex / Semantic Scholar / arXiv 检索与去重
+│   ├── industrial_signals.py   # arXiv 90 天趋势、PatentsView 专利信号、TRL 评估
+│   ├── job_signals.py          # 静态岗位加载、RSS 岗位流、岗位过滤
+│   ├── grant_signals.py        # 基金加载、过滤、资格初筛、OpenAlex 资助方
+│   ├── cv_matcher.py           # 简历文本抽取与岗位匹配（硬过滤 + 软排序）
+│   ├── llm_client.py           # 大模型客户端（兼容 OpenAI 协议的预设）
+│   ├── ui_components.py        # 侧边栏、KPI、论文卡片、岗位/基金/前沿渲染组件
+│   ├── styles.py               # 自定义 CSS、Hero、页脚、头部样式
+│   ├── config.py               # 环境变量与侧边栏会话配置聚合
+│   └── src__init__.py          # src 包标记
 ├── scripts/
-│   └── scaffold_phase1.py      # 一键生成 Phase 1 项目文件（app.py、cv_parser.py、ajo.py 等）
-└── requirements.txt            # Python 依赖清单
+│   ├── prepare_compot_csv.py   # 生成商业潜力切片 CSV
+│   └── scaffold_phase1.py      # 早期 Gradio 骨架（历史模板，已被现应用取代）
+├── SKILL.md                    # Skill 说明（能力边界与调用方式）
+├── agents/openai.yaml          # Codex 自动发现元数据
+└── references/architecture.md  # 数据源、Schema 与合规细节
 ```
 
-`scripts/scaffold_phase1.py --out <项目目录> --force` 可一次性生成：
-- `schema.py`：统一职位 Schema 与简历画像 Schema（Python dataclass）
-- `job_adapters/ajo.py`：AcademicJobsOnline 适配器（含 5 秒/页 crawl-delay）
-- `cv_parser.py`：PDF/DOCX 文本抽取 + ModelScope Qwen 结构化解析（失败降级为规则抽取）
-- `matcher.py`：硬过滤 + 软排序 + 可解释 match_reasons
-- `app.py`：Gradio 前端界面
-- `requirements.txt`
+## 快速开始
 
-## 数据源与 Schema
+```bash
+pip install -r requirements.txt
+streamlit run app.py
+```
 
-### 职位统一 Schema（Job）
+默认打开 `http://localhost:8501`。所有 API Key 均可在**左侧边栏**现场填写（仅存于会话内存，关闭即焚），也可用环境变量预置：
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| job_id | str | 唯一 ID，前缀标注来源（如 `ajo:12345`） |
-| source | str | `AJO` / `EURAXESS` / `AcademicPositions` / `FacultyVacancies` ... |
-| title | str | 职位名称 |
-| position_level | str | `RA` / `Masters` / `PhD` / `Postdoc` / `AssistantProf` / `AssociateProf` / `FullProf` / `ResearchFellow` / `ResearchScientist` |
-| institution | str | 机构名称 |
-| country | str | ISO 3166-1 alpha-2 国家代码 |
-| city | str | 城市 |
-| discipline | str | 学科 |
-| deadline | str\|null | `YYYY-MM-DD` 或 null |
-| posted_date | str | 发布日期 |
-| url | str | 原始申请链接 |
-| description_full | str | 完整职位描述 |
-| requirements_extracted | list[str] | 提取的要求列表 |
-| funding_duration | str\|null | 资助期限 |
-| match_score | int\|null | 运行时匹配分数 0–100 |
-| match_reasons | list[str] | 运行时可解释匹配理由 |
+| 环境变量 | 用途 | 必需性 |
+|----------|------|--------|
+| `OPENALEX_API_KEY` | OpenAlex 检索（含邮箱 polite pool） | 可选 |
+| `SEMANTIC_SCHOLAR_API_KEY` | Semantic Scholar 检索 | 可选 |
+| `APIFY_API_TOKEN` | TRL 产业化评估 Actor | 可选 |
+| `PATENTSVIEW_API_KEY` | 专利信号 | 可选 |
+| `COMPOT_CSV_PATH` | 商业潜力切片路径，默认 `data/commercial_potential.csv` | 可选 |
+| `JOBS_CSV_PATH` | 静态岗位库路径，默认 `data/academic_jobs.csv` | 可选 |
+| `GRANTS_CSV_PATH` | 基金库路径，默认 `data/research_grants.csv.csv` | 可选 |
+| 侧边栏 LLM Key | 简历解析 / 岗位匹配 / 基金资格核验 / 论文摘要 | 用 AI 功能时必需 |
 
-### 简历画像 Schema（AcademicProfile）
+> 无任何 Key 时应用仍可启动，静态数据与检索可用，AI 相关功能显示「待填 Key」。
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| degrees | list[str] | 已获/在读学位 |
-| expected_graduation | str\|null | 预计毕业时间 |
-| research_areas | list[str] | 3–8 个标准化研究方向标签 |
-| publication_count | int | 发表数量 |
-| first_or_corresponding_count | int | 一作/通讯数量 |
-| top_venues | list[str] | 顶会/顶刊列表 |
-| skills | list[str] | 编程语言、实验技术、软件工具 |
-| languages | list[str] | 语言能力 |
-| position_level_range | list[str] | 推断适用职位级别范围 |
-| accepted_countries | list[str] | 接受的国家/地区 |
-| parsing_note | str\|null | 降级解析时的提示 |
+## 数据与检索流程
 
-## 匹配流程
+1. **文献检索**：`search_academic_papers()` 并发查询 OpenAlex / Semantic Scholar / arXiv，按 DOI 去重合并，附引用数与来源徽章。
+2. **产业化注入**：用 `commercial_potential.csv` 给每篇论文打商业潜力分级，叠加 arXiv 90 天趋势与 PatentsView 专利信号，形成「学术热度 → 产业信号」视图。
+3. **岗位匹配**：静态岗位库 + RSS 岗位流合并去重；上传简历后由 LLM 抽取学术画像，先做硬过滤（职位级别 / 地域 / 截止日期），再软排序（研究方向语义相似度 + 发表/技能匹配），输出 0–100 分与可解释理由。
+4. **基金追踪**：静态基金库 + OpenAlex 资助方补充，按阶段/地区/资格过滤，LLM 可做资格初核。
 
-1. **硬过滤层**：`position_level` 是否在用户可申请范围；`country` 是否在接受列表；`deadline` 是否已过期。
-2. **软排序层**：研究方向语义相似度 + 发表记录/顶刊匹配度 + 技能重叠 + 机构声誉加权。
-3. **输出**：每个职位给出 `match_score`（0–100）和可解释 `match_reasons`。
+## 部署
 
-## ModelScope Studio 部署
+- **本地**：`streamlit run app.py`
+- **ModelScope Studio / Streamlit Cloud**：入口文件设为 `app.py`，持久化目录用 `/mnt/workspace/data`，敏感信息走平台 Secrets，不要写入仓库。
 
-1. 新建 Gradio/Streamlit 类型空间（推荐 Gradio，开发最快）。
-2. 将代码推送到 Studio，配置 Secrets（`MODELSCOPE_API_KEY`、`AJO_API_URL` 等，不要写入代码）。
-3. 持久化目录：`/mnt/workspace/data`（简历、职位缓存、追踪列表）。
-4. `requirements.txt` 中包含 `modelscope`、`gradio`、`pdfplumber`、`requests`。
-5. 部署前本地运行 `python app.py` 并上传测试简历验证解析与匹配流程。
+## 合规与边界
 
-## 合规说明
-- 职位数据来自第三方公开来源，平台不保证信息的实时性与完整性，申请前请以原始链接为准。
-- 所有爬虫遵守目标站点 `robots.txt` 与 `crawl-delay`（AJO 要求 5 秒/页）。
-- 敏感信息通过 Studio Secrets 或环境变量配置，禁止写入代码仓库。
+- 职位与基金数据来自公开来源与第三方接口，不保证实时性与完整性，申请前以原始链接为准。
+- 遵守目标站点 `robots.txt` 与 crawl-delay。
+- AI 功能仅辅助判断（匹配建议、资格初核、摘要），不代写求职信正文，不修改用户简历内容；最终决定权在用户。
+- 密钥只保存在会话内存或环境变量，绝不出现在代码与提交历史中。
 
-## Skill 调用
+## 贡献与支持
 
-Agent 可通过自然语言触发：
-- `parse_academic_cv("path/to/resume.pdf")`
-- `search_academic_jobs(profile={"research_areas": ["NLP", ...], ...}, filters={"position_levels": ["Postdoc"]})`
+作者：xingguangYan（xingguangyan0703@gmail.com）。如本项目对你有帮助，欢迎在「☕ 支持与合作」标签页扫码支持。
 
 ## 版本历史
 
-- v1.0：Phase 1 基础版，AcademicJobsOnline 适配器 + Gradio 前端 + 本地运行验证
+- v2.0：重构为 Streamlit 应用「科研前沿 × 产业化 × 学术求职与基金聚合器」，新增文献检索、产业化信号、基金模块与 CV 匹配
+- v1.0：AcademicJobsOnline 适配器 + Gradio 前端骨架（`scripts/scaffold_phase1.py` 保留为历史模板）
 
 ## 许可
 
-MIT License
+Apache License 2.0
